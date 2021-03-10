@@ -1,0 +1,469 @@
+/* eslint-disable react/no-will-update-set-state */
+/* eslint-disable react/destructuring-assignment */
+/* eslint-disable no-nested-ternary */
+/* eslint-disable no-param-reassign */
+/* eslint-disable jsx-a11y/anchor-is-valid */
+/* eslint-disable no-undef */
+/* eslint-disable no-script-url */
+/* eslint-disable react/no-unused-state */
+/* eslint-disable no-underscore-dangle */
+/* eslint-disable react/no-access-state-in-setstate */
+/* eslint-disable react/prop-types */
+/* eslint-disable max-len */
+import React,
+{
+  PureComponent,
+  Fragment,
+} from 'react';
+// import {
+//   Nav, NavItem, NavLink,
+//   TabContent,
+//   TabPane,
+// } from 'reactstrap';
+import QueryString from 'query-string';
+import { connect } from 'react-redux';
+import Skeleton from 'react-loading-skeleton';
+import TableCell from '@material-ui/core/TableCell';
+import map from 'lodash/map';
+import moment from 'moment';
+import NumberFormat from 'react-currency-format';
+// import classnames from 'classnames';
+import { isUserAllowed } from '../../../shared/utils';
+import MatTable from '../../../shared/components/MaterialTable';
+import {
+  getAllGestions,
+  getAllGestionsMe,
+} from '../../../redux/actions/gestionsActions';
+// import ModalHideColumn from '../../../shared/components/Modals/ModalHideColumn';
+// import SearchBarAndFilters from './SearchBarAndFilters';
+import { setRUTFormat } from '../../../helpers/functions';
+import { changeTitleAction } from '../../../redux/actions/topbarActions';
+
+
+class ExecutiveList extends PureComponent {
+  state = {
+    activeTab: '1',
+    justAdminOrManager: false,
+    selected: [],
+    rowsPerPage: 10,
+    page: 0,
+    isOpenModalHideColumn: false,
+    search: null,
+    dataToTable: [],
+    hideId: false,
+    hideRut: false,
+    hideNombre: false,
+    hideClasificacion: false,
+    hideTramo: false,
+    hideProvision: false,
+    hideCuota: false,
+    hideCuotasTotales: false,
+    hideCuotasPagadas: false,
+    hideCuotasMora: false,
+    hideSaldo: false,
+    hideDiasMora: false,
+    hideIntensidad: false,
+    hideEstadoCompromiso: false,
+    hideFechaCompromiso: false,
+    hideFechaGestion: false,
+    hideSaldoHoy: false,
+    hideSinGestion: false,
+  };
+
+  componentDidMount() {
+    const isAdmin = isUserAllowed('admin');
+    this.setState({ justAdminOrManager: isAdmin });
+    const {
+      search,
+    } = this.props.location;
+
+    const query = QueryString.parse(search);
+    if (!isAdmin) {
+      this.props.getAllGestionsMe((search) ? { ...query, intensity: 0 } : { intensity: 0 }, (body) => {
+        this.getCharge(body);
+      });
+    } else {
+      this.props.getAllGestions((search) ? { ...query, intensity: 0 } : { intensity: 0 }, (body) => {
+        this.getCharge(body);
+      });
+    }
+    this.props.setTitle('');
+  }
+
+  handleChangePage = (event, page) => {
+    this.setState({ page });
+  };
+
+  handleChangeRowsPerPage = (event) => {
+    this.setState({ rowsPerPage: event.target.value });
+  };
+
+  handleSelectAllClick = (event, checked) => {
+    if (checked) {
+      this.setState(state => ({ selected: state.data.map(n => n.id) }));
+      return;
+    }
+    this.setState({ selected: [] });
+  };
+
+  onClickModalAssignCase = () => {
+    this.setState({
+      isOpenModalAC: true,
+      hideFind: false,
+      disabledIt: false,
+      hideNewContact: true,
+      rut: '',
+    });
+  }
+
+  onClickModalNewCase = () => {
+    this.setState({
+      _id: null,
+      isOpenModalNC: true,
+      origen: '',
+      tipo: '',
+      tipify: '',
+      description: '',
+      appointment: '',
+      assign: '',
+    });
+  }
+
+  onClickCaseView = e => () => {
+    this.props.history.push(`gestionDetail/${e}`);
+  }
+
+  isSelected = (id) => {
+    const { selected } = this.state;
+    return selected.indexOf(id) !== -1;
+  };
+
+  onSelectAllClick = (checked) => {
+    if (checked) {
+      const { contacts } = this.props;
+      this.setState({ selected: contacts.map(contact => contact._id) });
+      return;
+    }
+    this.setState({ selected: [] });
+  }
+
+  onChangeSearch = (e) => {
+    this.setState({ search: e.target.value });
+  }
+
+  onChangeHideColumn = (key, pos) => () => {
+    const aux = this.state[key];
+    console.log('en function', pos);
+    if (aux === false) {
+      this.setState({ [key]: true });
+    } else {
+      this.setState({ [key]: false });
+    }
+  }
+
+  onSubmitSearch = (e) => {
+    e.preventDefault();
+
+    const {
+      search,
+    } = this.state;
+
+
+    const query = {};
+
+    Object.assign(query, { search });
+    const isAdmin = isUserAllowed('admin') || isUserAllowed('manager');
+    if (isAdmin) {
+      this.props.getAllGestions(query, () => {
+        this.props.history.push(`/pages/gestions?${QueryString.stringify(query)}`);
+      });
+    } else {
+      this.props.getAllGestionsMe(query, () => {
+        this.props.history.push(`/pages/gestions?${QueryString.stringify(query)}`);
+      });
+    }
+  }
+
+  onChangeRowsPerPage = (rowsPerPage) => {
+    this.setState({ rowsPerPage });
+    const query = QueryString.parse(this.props.location.search);
+    this.props.history.push(`/pages/gestions?${QueryString.stringify({ ...query, limit: rowsPerPage })}`);
+    this.props.getAllGestions({ ...query, limit: rowsPerPage });
+  }
+
+  onChangePage = (page) => {
+    this.setState({ page });
+    const query = QueryString.parse(this.props.location.search);
+    this.props.history.push(`/pages/gestions?${QueryString.stringify({ ...query, page: page + 1 })}`);
+    this.props.getAllGestions({ ...query, page: page + 1 });
+  }
+
+  allCases = () => {
+    this.props.getAllGestions({}, () => {
+      this.setState({ search: '' });
+    });
+  }
+
+  allMyCases = () => {
+    this.props.getAllGestionsMe({}, () => {
+      this.setState({ search: '' });
+    });
+  }
+
+  translate = (value) => {
+    if (value === 'with') {
+      return 'Con compromiso';
+    }
+
+    return 'Sin compromiso';
+  }
+
+  onClickHideColumn = () => {
+    this.setState({
+      isOpenModalHideColumn: true,
+    });
+  }
+
+  toggleHidenColumn = isOk => () => {
+    if (isOk) {
+      this.toFilter();
+    } else {
+      this.setState({ isOpenModalHideColumn: false });
+    }
+  }
+
+  getCharge = (info) => {
+    const data = map(info, d => ({
+      id: d._id,
+      gestionDate: ((d.managements) && (d.managements.length > 0)) ? d.managements[d.managements.length - 1].createdAt : '',
+      commitmentDate: d.commitmentDate ? d.commitmentDate : '',
+      cells: (
+        <Fragment>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{d.idCases}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{setRUTFormat(d.rut)}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{`${d.name} ${d.paternalSurname}`}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{d.ranking}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{d.section}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.provision}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.payment}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.paymentTotal}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.feesPaid}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.paymentOfArrears}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.capital}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.dayInArreas}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{ d.intensity }</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{ this.translate(d.commitment) }</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{moment(d.commitmentDate).format('DD/MM/YYYY')}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">{moment(d.createdAt).format('DD/MM/YYYY')}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.balanceToday}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} align="left">13 días</TableCell>
+        </Fragment>
+      ),
+    }));
+    this.setState({ dataToTable: data });
+  }
+
+  toggle(tab, opt) {
+    const { justAdminOrManager } = this.state;
+    const {
+      search,
+    } = this.props.location;
+
+    const query = QueryString.parse(search);
+    if (this.state.activeTab !== tab) {
+      this.setState({
+        activeTab: tab,
+      });
+    }
+
+    if (!justAdminOrManager) {
+      this.props.getAllGestionsMe({ ...query, ...opt }, (body) => {
+        this.getCharge(body);
+      });
+    } else {
+      this.props.getAllGestions({ ...query, ...opt }, (body) => {
+        this.getCharge(body);
+      });
+    }
+  }
+
+  render() {
+    const headers = [
+      {
+        id: 'executive', disablePadding: this.state.hideId, label: 'Nombre ejecutivo',
+      },
+      {
+        id: 'status', disablePadding: this.state.hideRut, label: 'Estado',
+      },
+      {
+        id: 'n_cuentas', disablePadding: this.state.hideNombre, label: 'N° de Cuentas',
+      },
+      {
+        id: 'credits', disablePadding: this.state.hideClasificacion, label: 'Saldo hoy',
+      },
+      {
+        id: 'asignation_today', disablePadding: this.state.hideTramo, label: 'Asignación hoy',
+      },
+      {
+        id: 'asignation_credits', disablePadding: this.state.hideProvision, label: 'Saldo asignación',
+      },
+      {
+        id: 'streach', disablePadding: this.state.hideCuota, label: 'Tramo',
+      },
+    ];
+
+    const {
+      rowsPerPage,
+      page,
+      selected,
+    } = this.state;
+
+    const {
+      disable,
+      countCases,
+      gestions,
+    } = this.props;
+
+    const data = map(gestions, d => ({
+      id: d._id,
+      gestionDate: ((d.managements) && (d.managements.length > 0)) ? d.managements[d.managements.length - 1].createdAt : '',
+      commitmentDate: d.commitmentDate ? d.commitmentDate : '',
+      cells: (
+        <Fragment>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} hidden={this.state.hideId} align="left">{d.idCases}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} hidden={this.state.hideRut} align="left">{setRUTFormat(d.rut)}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} hidden={this.state.hideNombre} align="left">{`${d.name} ${d.paternalSurname}`}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} hidden={this.state.hideClasificacion} align="left">{d.ranking}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} hidden={this.state.hideTramo} align="left">{d.section}</TableCell>
+          <TableCell className="material-table__cell" style={{ borderBottom: '0px' }} hidden={this.state.hideProvision} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.provision}
+            />
+          </TableCell>
+          <TableCell className="material-table__cell" hidden={this.state.hideCuota} style={{ borderBottom: '0px' }} align="left">
+            <NumberFormat
+              displayType="text"
+              style={{ fontSize: '14px' }}
+              decimalSeparator=","
+              thousandSeparator="."
+              value={d.payment}
+            />
+          </TableCell>
+        </Fragment>
+      ),
+    }));
+
+    return (
+      <Fragment>
+        {
+          disable && (
+            <Skeleton count={rowsPerPage + 1} height={40} />
+          )
+        }
+        {
+          !disable && (
+            <MatTable
+              onSelectAllClick={this.onSelectAllClick}
+              onChangePage={this.onChangePage}
+              cargando={disable}
+              onChangeRowsPerPage={this.onChangeRowsPerPage}
+              onClickRow={this.onClickRow}
+              onClick={this.onClickCaseView}
+              selected={selected}
+              headers={headers}
+              data={data}
+              page={page}
+              rowsPerPage={rowsPerPage}
+              total={countCases || 0}
+            />
+          )
+        }
+      </Fragment>
+    );
+  }
+}
+
+const mapStateToProps = ({ gestion }) => ({
+  gestions: gestion.gestions,
+  disable: gestion.disable,
+  countCases: gestion.countCases,
+  limitCases: gestion.limitCases,
+});
+
+
+const mapDispatchToProps = {
+  getAllGestions,
+  getAllGestionsMe,
+  setTitle: changeTitleAction,
+};
+
+
+export default connect(mapStateToProps, mapDispatchToProps, null, { forwardRef: true })(ExecutiveList);
